@@ -1,0 +1,148 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision.transforms as transforms
+from torchvision import datasets
+import tkinter as tk
+from tkinter import Scale, Label, Button, filedialog
+import plotly.graph_objects as go
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import ImageTk, Image
+
+# CNN Model Definition
+class SimpleCNN(nn.Module):
+    def __init__(self):
+        super(SimpleCNN, self).__init__()
+        self.conv1 = nn.Conv2d(1, 6, kernel_size=5)
+        self.conv2 = nn.Conv2d(6, 16, kernel_size=5)
+        self.fc1 = nn.Linear(16 * 4 * 4, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.max_pool2d(x, 2)
+        x = F.relu(self.conv2(x))
+        x = F.max_pool2d(x, 2)
+        x = x.view(-1, 16 * 4 * 4)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+# Load an image from the MNIST dataset
+def load_and_process_image():
+    transform = transforms.Compose([transforms.ToTensor()])
+    test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+    test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=1, shuffle=False)
+    images, _ = next(iter(test_loader))
+    return images
+
+# Visualization function for CNN layers
+def visualize_conv_layer(conv_output, filter_idx, layer_name):
+    conv_output_np = conv_output.detach().numpy().squeeze()
+    selected_filter = conv_output_np[filter_idx]
+
+    fig = go.Figure(data=[go.Surface(z=selected_filter, showscale=False)])
+
+    fig.update_layout(
+        title=f'{layer_name} - Filter {filter_idx}',
+        width=600, height=600,
+        scene=dict(
+            zaxis=dict(range=[-2, 2], autorange=False),
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+        )
+    )
+
+    fig.show()
+
+# Function to process and visualize a specific layer
+def process_and_visualize(layer, filter_idx):
+    images = load_and_process_image()
+    
+    if layer == 'conv1':
+        conv1_output = model.conv1(images)
+        visualize_conv_layer(conv1_output, filter_idx, "Conv Layer 1")
+    elif layer == 'conv2':
+        conv1_output = model.conv1(images)
+        pool1_output = F.max_pool2d(F.relu(conv1_output), 2)
+        conv2_output = model.conv2(pool1_output)
+        visualize_conv_layer(conv2_output, filter_idx, "Conv Layer 2")
+
+# Display original image in the GUI
+def display_image(canvas, image_data):
+    img = image_data.squeeze().numpy()
+    plt.figure(figsize=(2, 2))
+    plt.imshow(img, cmap='gray')
+    plt.axis('off')
+    plt.tight_layout()
+    
+    img_plot = FigureCanvasTkAgg(plt.gcf(), master=canvas)
+    img_plot.draw()
+    img_plot.get_tk_widget().pack()
+
+# CNNApp Class to Handle the GUI
+class CNNApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Enhanced CNN Visualization")
+        
+        # Load and display the image
+        self.image_frame = tk.Frame(self.root)
+        self.image_frame.pack(side=tk.LEFT, padx=20, pady=20)
+
+        self.image_label = Label(self.image_frame, text="Original Image", font=("Helvetica", 14))
+        self.image_label.pack(pady=10)
+
+        self.image_canvas = tk.Canvas(self.image_frame, width=150, height=150)
+        self.image_canvas.pack()
+        self.image = load_and_process_image()
+        display_image(self.image_canvas, self.image)
+
+        # Layer Selection Buttons
+        self.layer_button_frame = tk.Frame(self.root)
+        self.layer_button_frame.pack(side=tk.LEFT, padx=20, pady=20)
+
+        self.layer_label = Label(self.layer_button_frame, text="Select Layer", font=("Helvetica", 14))
+        self.layer_label.pack(pady=10)
+
+        self.conv1_button = Button(self.layer_button_frame, text="Conv Layer 1", command=lambda: self.update_layer('conv1'))
+        self.conv1_button.pack(pady=5)
+
+        self.conv2_button = Button(self.layer_button_frame, text="Conv Layer 2", command=lambda: self.update_layer('conv2'))
+        self.conv2_button.pack(pady=5)
+
+        # Filter Selection Slider
+        self.slider_frame = tk.Frame(self.root)
+        self.slider_frame.pack(side=tk.LEFT, padx=20, pady=20)
+
+        self.slider_label = Label(self.slider_frame, text="Select Filter", font=("Helvetica", 14))
+        self.slider_label.pack(pady=10)
+
+        self.filter_slider = Scale(self.slider_frame, from_=0, to=5, orient='horizontal', command=self.update_filter)
+        self.filter_slider.pack(pady=5)
+
+        self.current_layer = 'conv1'
+        self.current_filter = 0
+
+    # Update the selected layer
+    def update_layer(self, layer):
+        self.current_layer = layer
+        process_and_visualize(self.current_layer, self.current_filter)
+
+    # Update the selected filter
+    def update_filter(self, filter_idx):
+        self.current_filter = int(filter_idx)
+        process_and_visualize(self.current_layer, self.current_filter)
+
+# Instantiate the CNN Model
+model = SimpleCNN()
+
+# Create the main application window
+root = tk.Tk()
+app = CNNApp(root)
+root.geometry("600x400")
+root.mainloop()
